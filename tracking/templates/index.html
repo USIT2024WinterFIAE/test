@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handverfolgung</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        /* Füge hier deine CSS-Stile hinzu */
+        #video {
+            border: 1px solid black;
+        }
+        .led {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: inline-block;
+            background-color: gray;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Handverfolgung mit LED-Anzeige</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <div id="leds">
+        <div class="led" id="thumb"></div>
+        <div class="led" id="index"></div>
+        <div class="led" id="middle"></div>
+        <div class="led" id="ring"></div>
+        <div class="led" id="pinky"></div>
+    </div>
+    <script>
+        const video = document.getElementById('video');
+        const leds = {
+            thumb: document.getElementById('thumb'),
+            index: document.getElementById('index'),
+            middle: document.getElementById('middle'),
+            ring: document.getElementById('ring'),
+            pinky: document.getElementById('pinky'),
+        };
+
+        async function setupCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true
+            });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    resolve(video);
+                };
+            });
+        }
+
+        async function main() {
+            await setupCamera();
+            video.play();
+
+            const hands = new Hands({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onResults);
+
+            const camera = new Camera(video, {
+                onFrame: async () => {
+                    await hands.send({ image: video });
+                },
+                width: 640,
+                height: 480
+            });
+            camera.start();
+        }
+
+        function onResults(results) {
+            if (results.multiHandLandmarks) {
+                results.multiHandLandmarks.forEach((handLandmarks) => {
+                    const fingerStates = detectFingers(handLandmarks);
+                    updateLEDs(fingerStates);
+                });
+            }
+        }
+
+        function detectFingers(handLandmarks) {
+            const fingerTips = [8, 12, 16, 20];
+            const thumbTip = 4;
+            const fingerStates = [0, 0, 0, 0, 0];
+
+            // Daumen erkennen
+            if (handLandmarks[thumbTip].x < handLandmarks[thumbTip - 1].x) {
+                fingerStates[0] = 1; // Daumen ist gestreckt
+            }
+
+            // Finger erkennen
+            fingerTips.forEach((tip, index) => {
+                if (handLandmarks[tip].y < handLandmarks[tip - 2].y) {
+                    fingerStates[index + 1] = 1; // Finger ist gestreckt
+                }
+            });
+
+            return fingerStates;
+        }
+
+        function updateLEDs(fingerStates) {
+            for (let i = 0; i < fingerStates.length; i++) {
+                leds[Object.keys(leds)[i]].style.backgroundColor = fingerStates[i] === 1 ? 'green' : 'gray';
+            }
+        }
+
+        main();
+    </script>
+</body>
+</html>
